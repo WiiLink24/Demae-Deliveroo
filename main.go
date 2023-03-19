@@ -63,6 +63,7 @@ func main() {
 	nwapi := r.HandleGroup("nwapi.php")
 	{
 		nwapi.NormalResponse("webApi_document_template", documentTemplate)
+		nwapi.NormalResponse("webApi_area_list", areaList)
 		nwapi.MultipleRootNodes("webApi_category_list", categoryList)
 		nwapi.NormalResponse("webApi_area_shopinfo", func(r *Response) {})
 		nwapi.NormalResponse("webApi_shop_list", shopList)
