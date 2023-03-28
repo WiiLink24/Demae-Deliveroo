@@ -1,10 +1,16 @@
 package deliveroo
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/mitchellh/go-wordwrap"
 	"golang.org/x/exp/slices"
+	"golang.org/x/image/draw"
+	"image"
+	"image/jpeg"
 	"io"
 	"net/http"
 	"os"
@@ -49,7 +55,7 @@ func (d *Deliveroo) GetBareShops() (HasFoodType, error) {
 		return HasFoodType{}, err
 	}
 
-	response, err := d.sendPOST("https://api.deliveroo.com/consumer/graphql/", graphQLQuery)
+	response, err := d.sendPOST("https://api.deliveroo.com/consumer/graphql/", graphQLQuery, None)
 	if err != nil {
 		return HasFoodType{}, err
 	}
@@ -95,6 +101,9 @@ func (d *Deliveroo) GetBareShops() (HasFoodType, error) {
 					case "Ice cream":
 						has.DessertAndDrinks = true
 						break
+					case "Italian":
+						has.Pizza = true
+						break
 					case "Indian":
 						has.Curry = true
 						break
@@ -126,7 +135,7 @@ func (d *Deliveroo) GetBareShops() (HasFoodType, error) {
 }
 
 var foodTypes = map[CategoryCode][]string{
-	Pizza:            {"Pizza"},
+	Pizza:            {"Pizza", "Italian"},
 	Western:          {"American", "Burritos", "Mexican", "Burgers"},
 	FastFood:         {"American", "Burgers", "Chicken"},
 	Chinese:          {"Chinese", "Dumplings"},
@@ -143,7 +152,7 @@ func (d *Deliveroo) GetShops(code CategoryCode) ([]Store, error) {
 		return nil, err
 	}
 
-	response, err := d.sendPOST("https://api.deliveroo.com/consumer/graphql/", graphQLQuery)
+	response, err := d.sendPOST("https://api.deliveroo.com/consumer/graphql/", graphQLQuery, None)
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +217,20 @@ func (d *Deliveroo) GetShops(code CategoryCode) ([]Store, error) {
 
 			description := "No Description"
 			if jsonData["description"] != nil {
-				description = jsonData["description"].(string)
+				description = wordwrap.WrapString(jsonData["description"].(string), 38)
+				for i3, s := range strings.Split(description, "\n") {
+					switch i3 {
+					case 0:
+						description = s
+						break
+					case 1:
+						description += "\n"
+						description += s
+						break
+					default:
+						break
+					}
+				}
 			}
 
 			d.mutex.Lock()
@@ -218,7 +240,7 @@ func (d *Deliveroo) GetShops(code CategoryCode) ([]Store, error) {
 				Address:      "",
 				WaitTime:     jsonData["total_time"].(float64),
 				MinPrice:     jsonData["min_order"].(string),
-				IsOpen:       true,
+				IsOpen:       jsonData["open"].(bool),
 				DetailedWait: "",
 				Phone:        "",
 				ServiceHours: ServiceHours{},
@@ -250,20 +272,41 @@ func (d *Deliveroo) GetStore(id string) (Store, error) {
 
 	description := "No Description"
 	if jsonData["description"] != nil {
-		description = jsonData["description"].(string)
+		description = wordwrap.WrapString(jsonData["description"].(string), 28)
+		for i3, s := range strings.Split(description, "\n") {
+			switch i3 {
+			case 0:
+				description = s
+				break
+			default:
+				description += "\n"
+				description += s
+				break
+			}
+		}
+	}
+
+	amenity := "None"
+	if jsonData["promotion_incentive"] != nil {
+		// TODO: Figure out other incentives
+		if jsonData["promotion_incentive"].(map[string]any)["type"].(string) == "free_delivery" {
+			amenity = fmt.Sprintf("Free Delivery at £%.f", jsonData["promotion_incentive"].(map[string]any)["threshold"].(float64))
+		}
 	}
 
 	return Store{
-		Name:         jsonData["name"].(string),
-		StoreID:      id,
-		Address:      jsonData["address"].(map[string]any)["address1"].(string),
-		WaitTime:     jsonData["total_time"].(float64),
-		MinPrice:     jsonData["min_order"].(string),
+		Name:     jsonData["name"].(string),
+		StoreID:  id,
+		Address:  jsonData["address"].(map[string]any)["address1"].(string),
+		WaitTime: jsonData["total_time"].(float64),
+		MinPrice: jsonData["min_order"].(string),
+		// jsonData["open"].(bool)
 		IsOpen:       true,
 		DetailedWait: "a",
 		Phone:        jsonData["phone_number"].(string),
 		ServiceHours: ServiceHours{},
 		Information:  description,
+		Amenity:      amenity,
 	}, nil
 }
 
@@ -335,16 +378,22 @@ func (d *Deliveroo) GetItems(shopCode string, categoryID string) ([]Item, error)
 				imageURL = strings.Replace(imageURL, "{h}", "160", -1)
 				imageURL = strings.Replace(imageURL, "{&quality}", "100", -1)
 				response, _ = http.Get(imageURL)
-				respBytes, _ = io.ReadAll(response.Body)
-
-				os.WriteFile(fmt.Sprintf("./images/%s/%s.jpg", shopCode, imageID), respBytes, 0666)
-				response.Body.Close()
+				newImage := ConvertImage(response.Body)
+				if newImage != nil {
+					os.WriteFile(fmt.Sprintf("./images/%s/%s.jpg", shopCode, imageID), newImage, 0666)
+					response.Body.Close()
+				}
 			}
+		}
+
+		description := item.(map[string]any)["name"].(string)
+		if item.(map[string]any)["description"] != nil {
+			description = item.(map[string]any)["description"].(string)
 		}
 
 		items = append(items, Item{
 			Name:        item.(map[string]any)["name"].(string),
-			Description: item.(map[string]any)["name"].(string),
+			Description: description,
 			ImgID:       imageID,
 			SoldOut:     item.(map[string]any)["available"].(bool),
 			Price:       item.(map[string]any)["price"].(string),
@@ -417,11 +466,36 @@ func (d *Deliveroo) GetItem(shopCode string, categoryCode string, itemCode strin
 					continue
 				}
 
+				imageID := fmt.Sprintf("%.f", _item.(map[string]any)["id"].(float64))
+				if _item.(map[string]any)["image_url"] != nil {
+					_, err := os.ReadFile(fmt.Sprintf("./images/%s/%s.jpg", shopCode, imageID))
+					if err != nil {
+						// This is typically unsafe, but we should be able to get away with it for our purposes
+						if _, err := os.Stat(fmt.Sprintf("./images/%s", shopCode)); os.IsNotExist(err) {
+							os.Mkdir(fmt.Sprintf("./images/%s", shopCode), 0777)
+						}
+
+						imageURL := _item.(map[string]any)["image_url"].(string)
+						imageURL = strings.Replace(imageURL, "{w}", "160", -1)
+						imageURL = strings.Replace(imageURL, "{h}", "160", -1)
+						imageURL = strings.Replace(imageURL, "{&quality}", "100", -1)
+						response, _ = http.Get(imageURL)
+						newImage := ConvertImage(response.Body)
+						if newImage != nil {
+							os.WriteFile(fmt.Sprintf("./images/%s/%s.jpg", shopCode, imageID), newImage, 0666)
+							response.Body.Close()
+						}
+					}
+				} else {
+					imageID = "non"
+				}
+
 				item.ModifierGroups[i].Modifiers[i2] = Modifier{
 					ID:          modifier.ID,
 					Name:        _item.(map[string]any)["name"].(string),
 					Description: _item.(map[string]any)["name"].(string),
 					Price:       _item.(map[string]any)["price"].(string),
+					ImageID:     imageID,
 				}
 			}
 
@@ -522,7 +596,7 @@ func (d *Deliveroo) SendBasket(shopCode string, basket []map[string]any) (string
 		return "", "", 0, err
 	}
 
-	response, err := d.sendPOST("https://api.deliveroo.com/orderapp/v1/basket", data)
+	response, err := d.sendPOST("https://api.deliveroo.com/orderapp/v1/basket", data, None)
 	if err != nil {
 		return "", "", 0, err
 	}
@@ -542,29 +616,53 @@ func (d *Deliveroo) SendBasket(shopCode string, basket []map[string]any) (string
 	return jsonData["basket"].(map[string]any)["total"].(string), jsonData["basket"].(map[string]any)["subtotal"].(string), surcharge + fee, nil
 }
 
-func (d *Deliveroo) CreatePaymentPlan() (string, error) {
+func (d *Deliveroo) CreatePaymentPlan() (*PaymentMethod, error) {
 	query, err := GetCreatePaymentQuery()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	response, err := d.sendPOST("https://api.deliveroo.com/checkout-api/graphql-query", query)
+	response, err := d.sendPOST("https://api.deliveroo.com/checkout-api/graphql-query", query, CreatePaymentPlan)
 	if err != nil {
-		return "HasFoodType{}", err
+		return nil, err
 	}
 
 	if response.StatusCode != http.StatusOK {
-		return "", errors.New("failed to create payment plan")
+		return nil, errors.New("failed to create payment plan")
 	}
 
 	defer response.Body.Close()
 	respBytes, _ := io.ReadAll(response.Body)
+	fmt.Println(string(respBytes))
 
 	jsonData := map[string]any{}
 	err = json.Unmarshal(respBytes, &jsonData)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return jsonData["data"].(map[string]any)["payment_plan"].(map[string]any)["id"].(string), nil
+	return &PaymentMethod{
+		RestaurantName:  jsonData["data"].(map[string]any)["payment_plan"].(map[string]any)["fulfillment_details"].(map[string]any)["restaurant"].(string),
+		ID:              jsonData["data"].(map[string]any)["payment_plan"].(map[string]any)["id"].(string),
+		DeliveryAddress: jsonData["data"].(map[string]any)["payment_plan"].(map[string]any)["delivery_addresses"].(map[string]any)["selected"].(map[string]any)["short_description"].([]any)[0].(string),
+		CreditCard:      jsonData["data"].(map[string]any)["payment_plan"].(map[string]any)["payment_options"].(map[string]any)["selected_completing"].(map[string]any)["description"].([]any)[0].(string),
+	}, nil
+}
+
+func ConvertImage(data io.Reader) []byte {
+	origImage, err := jpeg.Decode(data)
+	if err != nil {
+		return nil
+	}
+
+	newImage := image.NewRGBA(image.Rect(0, 0, 160, 160))
+	draw.BiLinear.Scale(newImage, newImage.Bounds(), origImage, origImage.Bounds(), draw.Over, nil)
+
+	var outputImgWriter bytes.Buffer
+	err = jpeg.Encode(bufio.NewWriter(&outputImgWriter), newImage, nil)
+	if err != nil {
+		return nil
+	}
+
+	return outputImgWriter.Bytes()
 }

@@ -3,7 +3,12 @@ package main
 import (
 	"DemaeDeliveroo/deliveroo"
 	"encoding/xml"
+	"fmt"
+	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/transform"
+	"io"
 	"net/http"
+	"strings"
 )
 
 func documentTemplate(r *Response) {
@@ -130,4 +135,27 @@ func categoryList(r *Response) {
 	if storesXML != nil && r.request.URL.Query().Get("action") != "webApi_shop_list" {
 		r.AddCustomType(placeholder)
 	}*/
+}
+
+func inquiryDone(r *Response) {
+	// For our purposes, we will not be handling any restaurant requests.
+	// However, the error endpoint uses this, so we must deal with that.
+	// An error will never send a phone number, check for that first.
+	if r.request.PostForm.Get("tel") != "" {
+		return
+	}
+
+	shiftJisDecoder := func(str string) string {
+		ret, _ := io.ReadAll(transform.NewReader(strings.NewReader(str), japanese.ShiftJIS.NewDecoder()))
+		return string(ret)
+	}
+
+	// Now handle error.
+	errorString := fmt.Sprintf(
+		"An error has occured at on request %s\nError message: %s",
+		shiftJisDecoder(r.request.PostForm.Get("requestType")),
+		shiftJisDecoder(r.request.PostForm.Get("message")),
+	)
+
+	r.ReportError(fmt.Errorf(errorString), http.StatusInternalServerError)
 }

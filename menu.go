@@ -80,7 +80,7 @@ func itemList(r *Response) {
 	}
 
 	for i, item := range itemData {
-		name := wordwrap.WrapString(item.Name, 26)
+		name := wordwrap.WrapString(item.Name, 20)
 		for i, s := range strings.Split(name, "\n") {
 			switch i {
 			case 0:
@@ -93,7 +93,7 @@ func itemList(r *Response) {
 			}
 		}
 
-		description := wordwrap.WrapString(item.Description, 39)
+		description := wordwrap.WrapString(item.Description, 36)
 		for i, s := range strings.Split(description, "\n") {
 			switch i {
 			case 0:
@@ -130,7 +130,7 @@ func itemList(r *Response) {
 						ItemSize{
 							XMLName:   xml.Name{Local: "item0"},
 							ItemCode:  CDATA{item.ImgID},
-							Size:      CDATA{item.Name},
+							Size:      CDATA{name},
 							Price:     CDATA{item.Price},
 							IsSoldout: CDATA{BoolToInt(false)},
 						},
@@ -176,7 +176,7 @@ func itemOne(r *Response) {
 
 		parent := ItemOne{
 			XMLName: xml.Name{Local: fmt.Sprintf("container%d", i)},
-			Info:    CDATA{modifier.Name},
+			Info:    CDATA{fmt.Sprintf("Max item selection is %.f, minimum %.f", modifier.MaxSelection, modifier.MinSelection)},
 			Code:    CDATA{modifier.ID},
 			Type:    CDATA{buttonType},
 			Name:    CDATA{modifier.Name},
@@ -186,14 +186,28 @@ func itemOne(r *Response) {
 		}
 
 		for _, _item := range modifier.Modifiers {
+			name := wordwrap.WrapString(_item.Name, 32)
+			for i3, s := range strings.Split(name, "\n") {
+				switch i3 {
+				case 0:
+					name = s
+					break
+				default:
+					name += "\n"
+					name += s
+					break
+				}
+			}
+
+			fmt.Println(_item.ImageID)
 			parent.List.Value = append(parent.List.Value, Item{
 				MenuCode:  CDATA{modifier.ID},
 				ItemCode:  CDATA{_item.ID},
-				Name:      CDATA{_item.Name},
+				Name:      CDATA{name},
 				Price:     CDATA{_item.Price},
 				Info:      CDATA{""},
 				Size:      nil,
-				Image:     CDATA{"non"},
+				Image:     CDATA{_item.ImageID},
 				IsSoldout: CDATA{BoolToInt(false)},
 				SizeList:  nil,
 			})

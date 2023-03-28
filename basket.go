@@ -2,18 +2,23 @@ package main
 
 import (
 	"DemaeDeliveroo/deliveroo"
+	"bytes"
 	"context"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"github.com/gofrs/uuid"
 	"github.com/mitchellh/go-wordwrap"
+	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 const InsertAuthkey = `UPDATE "user" SET auth_key = $1 WHERE wii_id = $2`
+const InsertPaymentID = `UPDATE "user" SET payment_id = $1 WHERE wii_id = $2`
 const QueryUserBasket = `SELECT "user".basket, "user".auth_key FROM "user" WHERE "user".wii_id = $1 LIMIT 1`
+const QueryUser = `SELECT "user".basket, "user".auth_key, "user".discord_id FROM "user" WHERE "user".wii_id = $1 LIMIT 1`
 const ClearBasket = `UPDATE "user" SET order_id = $1, price = $2, basket = $3 WHERE wii_id = $4`
 
 func authKey(r *Response) {
@@ -319,4 +324,173 @@ func basketList(r *Response) {
 		status,
 		cart,
 	}
+}
+
+func orderDone(r *Response) {
+	// We don't handle the actual order here, we dispatch a verification message to the current user.
+	// The Discord bot then places the order if all is right.
+	var basketStr string
+	var _authKey string
+	var discordID string
+	row := pool.QueryRow(context.Background(), QueryUser, r.request.Header.Get("X-WiiID"))
+	err := row.Scan(&basketStr, &_authKey, &discordID)
+	if err != nil {
+		r.ReportError(err, http.StatusInternalServerError)
+		return
+	}
+
+	payload := map[string]string{
+		"recipient_id": discordID,
+	}
+
+	data, _ := json.Marshal(payload)
+
+	client := &http.Client{}
+	req, _ := http.NewRequest("POST", "https://discord.com/api/v9/users/@me/channels", bytes.NewBuffer(data))
+	req.Header.Add("Authorization", "Bot MTA4NDk1Mjk1NzQ1MzM1NzEwOA.GHF8Tc.v53WCopE5PICKbYlWNY-uBMxUwr89Qco6NSgpc")
+	req.Header.Add("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		r.ReportError(err, http.StatusInternalServerError)
+		return
+	}
+
+	respBytes, _ := io.ReadAll(resp.Body)
+	var dm struct {
+		ID string `json:"id"`
+	}
+
+	err = json.Unmarshal(respBytes, &dm)
+	if err != nil {
+		r.ReportError(err, http.StatusInternalServerError)
+		return
+	}
+
+	d, err := deliveroo.NewDeliveroo(pool, r.request)
+	if err != nil {
+		r.ReportError(err, http.StatusInternalServerError)
+		return
+	}
+
+	var basket []BasketJSON
+	err = json.Unmarshal([]byte(basketStr), &basket)
+	if err != nil {
+		r.ReportError(err, http.StatusInternalServerError)
+		return
+	}
+
+	var mapBasket []map[string]any
+	err = json.Unmarshal([]byte(basketStr), &mapBasket)
+	if err != nil {
+		r.ReportError(err, http.StatusInternalServerError)
+		return
+	}
+
+	var itemCodes []string
+	var modifierGroups [][]deliveroo.ModifierGroup
+
+	for _, basketJSON := range basket {
+		itemCodes = append(itemCodes, basketJSON.ItemCode)
+
+		var groups []deliveroo.ModifierGroup
+		for _, modifier := range basketJSON.Modifiers {
+			group := deliveroo.ModifierGroup{
+				ID:           modifier.ModifierGroupID,
+				Name:         "",
+				MinSelection: 0,
+				MaxSelection: 0,
+				Modifiers:    nil,
+			}
+
+			var modifiers []deliveroo.Modifier
+			for _, s := range modifier.ModifierID {
+				modifiers = append(modifiers, deliveroo.Modifier{
+					ID:          s,
+					Name:        "",
+					Description: "",
+					Price:       "",
+				})
+			}
+
+			group.Modifiers = modifiers
+			groups = append(groups, group)
+		}
+		modifierGroups = append(modifierGroups, groups)
+	}
+
+	items, err := d.GetItemsWithModifiers(r.request.PostForm.Get("shop[ShopCode]"), itemCodes, modifierGroups)
+	if err != nil {
+		r.ReportError(err, http.StatusInternalServerError)
+		return
+	}
+
+	itemsStr := ""
+	for _, item := range items {
+		itemsStr += fmt.Sprintf("%s - %s\n", item.Name, item.Price)
+	}
+
+	total, _, _, err := d.SendBasket(r.request.PostForm.Get("shop[ShopCode]"), mapBasket)
+	if err != nil {
+		r.ReportError(err, http.StatusInternalServerError)
+		return
+	}
+
+	payment, err := d.CreatePaymentPlan()
+	if err != nil {
+		r.ReportError(err, http.StatusInternalServerError)
+		return
+	}
+
+	_, err = pool.Exec(context.Background(), InsertPaymentID, payment.ID, r.request.Header.Get("X-WiiID"))
+	if err != nil {
+		r.ReportError(err, http.StatusInternalServerError)
+		return
+	}
+
+	message := map[string]any{
+		"content": nil,
+		"embeds": []map[string]any{
+			{
+				"title":       fmt.Sprintf("Deliveroo Order Request - %s", payment.RestaurantName),
+				"description": fmt.Sprintf("Demae Deliveroo has recieved a request for a %s order with the following basket:.\n\n%s", total, itemsStr),
+				"color":       3666886,
+				"fields": []map[string]any{
+					{
+						"name":  "Delivery Address",
+						"value": payment.DeliveryAddress,
+					},
+					{
+						"name":  "Selected Credit Card",
+						"value": payment.CreditCard,
+					},
+					{
+						"name":  "Accept Request",
+						"value": fmt.Sprintf("To accept the request, enter the following:\n```I agree to placing this order. I acknowledge that once this goes through, there is no cancelling the order. Auth Key: %s```", _authKey),
+					},
+				},
+			},
+		},
+	}
+
+	data, _ = json.Marshal(message)
+	req, _ = http.NewRequest("POST", fmt.Sprintf("https://discord.com/api/v9/channels/%s/messages", dm.ID), bytes.NewBuffer(data))
+	req.Header.Add("Authorization", "Bot MTA4NDk1Mjk1NzQ1MzM1NzEwOA.GHF8Tc.v53WCopE5PICKbYlWNY-uBMxUwr89Qco6NSgpc")
+	req.Header.Add("Content-Type", "application/json")
+
+	resp, err = client.Do(req)
+	if err != nil {
+		r.ReportError(err, http.StatusInternalServerError)
+		return
+	}
+
+	currentTime := time.Now().Format("200602011504")
+	r.AddKVWChildNode("Message", KVField{
+		XMLName: xml.Name{Local: "contents"},
+		Value:   "Thank you! Your order has been placed!",
+	})
+	r.AddKVNode("order_id", "1")
+	r.AddKVNode("orderDay", currentTime)
+	r.AddKVNode("hashKey", "Testing: 1, 2, 3")
+	r.AddKVNode("hour", currentTime)
 }

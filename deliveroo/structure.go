@@ -75,4 +75,12 @@ type Modifier struct {
 	Name        string
 	Description string
 	Price       string
+	ImageID     string
+}
+
+type PaymentMethod struct {
+	RestaurantName  string
+	ID              string
+	DeliveryAddress string
+	CreditCard      string
 }
