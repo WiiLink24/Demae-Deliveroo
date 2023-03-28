@@ -10,6 +10,7 @@ require (
 	github.com/logrusorgru/aurora/v4 v4.0.0
 	github.com/mitchellh/go-wordwrap v1.0.1
 	golang.org/x/exp v0.0.0-20230314191032-db074128a8ec
+	golang.org/x/image v0.6.0
 )
 
 require (
@@ -23,5 +24,5 @@ require (
 	github.com/jackc/puddle v1.3.0 // indirect
 	golang.org/x/crypto v0.6.0 // indirect
 	golang.org/x/sys v0.5.0 // indirect
-	golang.org/x/text v0.7.0 // indirect
+	golang.org/x/text v0.8.0 // indirect
 )
