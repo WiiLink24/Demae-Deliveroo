@@ -483,6 +483,13 @@ func orderDone(r *Response) {
 		r.ReportError(err, http.StatusInternalServerError)
 		return
 	}
+	
+	PostDiscordWebhook(
+		"An order has been queued. Awaiting confirmation",
+		fmt.Sprintf("The order was placed by user id %s", r.request.Header.Get("X-WiiID")),
+		config.OrderWebhook,
+		65311,
+	)
 
 	currentTime := time.Now().Format("200602011504")
 	r.AddKVWChildNode("Message", KVField{
