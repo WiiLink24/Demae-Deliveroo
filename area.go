@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"encoding/xml"
 	"math/rand"
+	"net/http"
 )
 
 const numberBytes = "0123456789"
+const InsertUser = `UPDATE "user" SET area_code = $1 WHERE wii_id = $2`
 
-func GenerateAreaCode(areaCode string) string {
+func GenerateAreaCode() string {
 	b := make([]byte, 11)
 	for i := range b {
 		b[i] = numberBytes[rand.Intn(len(numberBytes))]
@@ -82,13 +85,13 @@ func areaList(r *Response) {
 				Value: []any{
 					KVField{
 						XMLName: xml.Name{Local: "segment"},
-						Value:   "United Kingdom",
+						Value:   "Deliveroo",
 					},
 					KVFieldWChildren{
 						XMLName: xml.Name{Local: "list"},
 						Value: []any{
 							AreaNames{
-								AreaName: CDATA{"London"},
+								AreaName: CDATA{"Deliveroo"},
 								AreaCode: CDATA{1},
 							},
 						},
@@ -100,7 +103,13 @@ func areaList(r *Response) {
 		return
 	}
 
-	newAreaCode := GenerateAreaCode(areaCode)
+	newAreaCode := GenerateAreaCode()
+	_, err := pool.Exec(context.Background(), InsertUser, newAreaCode, r.request.Header.Get("X-WiiID"))
+	if err != nil {
+		r.ReportError(err, http.StatusInternalServerError)
+		return
+	}
+	
 	r.AddKVWChildNode("areaList", KVFieldWChildren{
 		XMLName: xml.Name{Local: "place"},
 		Value: []any{
@@ -116,12 +125,12 @@ func areaList(r *Response) {
 				XMLName: xml.Name{Local: "list"},
 				Value: []any{
 					Area{
-						AreaName:   CDATA{"Funny"},
+						AreaName:   CDATA{"Deliveroo"},
 						AreaCode:   CDATA{newAreaCode},
 						IsNextArea: CDATA{0},
 						Display:    CDATA{1},
-						Kanji1:     CDATA{"ssd"},
-						Kanji2:     CDATA{"London"},
+						Kanji1:     CDATA{"Deliveroo"},
+						Kanji2:     CDATA{"Deliveroo"},
 						Kanji3:     CDATA{""},
 						Kanji4:     CDATA{""},
 					},
