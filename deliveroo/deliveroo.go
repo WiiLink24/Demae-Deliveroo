@@ -49,15 +49,15 @@ func (d *Deliveroo) GetUserAddress() error {
 }
 
 // GetBareShops returns the absolute bare minimum required for the main menu to display food types
-func (d *Deliveroo) GetBareShops() (HasFoodType, error) {
+func (d *Deliveroo) GetBareShops() (HasFoodType, error, string) {
 	graphQLQuery, err := GetShopsQuery(d.longitude, d.latitude)
 	if err != nil {
-		return HasFoodType{}, err
+		return HasFoodType{}, err, ""
 	}
 
 	response, err := d.sendPOST("https://api.deliveroo.com/consumer/graphql/", graphQLQuery, None)
 	if err != nil {
-		return HasFoodType{}, err
+		return HasFoodType{}, err, ""
 	}
 
 	defer response.Body.Close()
@@ -66,7 +66,7 @@ func (d *Deliveroo) GetBareShops() (HasFoodType, error) {
 	jsonData := map[string]any{}
 	err = json.Unmarshal(respBytes, &jsonData)
 	if err != nil {
-		return HasFoodType{}, err
+		return HasFoodType{}, err, string(respBytes)
 	}
 
 	var has HasFoodType
@@ -131,7 +131,7 @@ func (d *Deliveroo) GetBareShops() (HasFoodType, error) {
 		}
 	}
 
-	return has, nil
+	return has, nil, string(respBytes)
 }
 
 var foodTypes = map[CategoryCode][]string{
@@ -146,15 +146,15 @@ var foodTypes = map[CategoryCode][]string{
 	Sushi:            {"Sushi"},
 }
 
-func (d *Deliveroo) GetShops(code CategoryCode) ([]Store, error) {
+func (d *Deliveroo) GetShops(code CategoryCode) ([]Store, error, string) {
 	graphQLQuery, err := GetShopsQuery(d.longitude, d.latitude)
 	if err != nil {
-		return nil, err
+		return nil, err, ""
 	}
 
 	response, err := d.sendPOST("https://api.deliveroo.com/consumer/graphql/", graphQLQuery, None)
 	if err != nil {
-		return nil, err
+		return nil, err, ""
 	}
 
 	defer response.Body.Close()
@@ -163,7 +163,7 @@ func (d *Deliveroo) GetShops(code CategoryCode) ([]Store, error) {
 	jsonData := map[string]any{}
 	err = json.Unmarshal(respBytes, &jsonData)
 	if err != nil {
-		return nil, err
+		return nil, err, string(respBytes)
 	}
 
 	restaurants := jsonData["data"].(map[string]any)["results"].(map[string]any)["ui_layout_groups"].([]any)[0].(map[string]any)["ui_layouts"].([]any)
@@ -252,13 +252,13 @@ func (d *Deliveroo) GetShops(code CategoryCode) ([]Store, error) {
 
 	wg.Wait()
 
-	return stores, nil
+	return stores, nil, string(respBytes)
 }
 
-func (d *Deliveroo) GetStore(id string) (Store, error) {
+func (d *Deliveroo) GetStore(id string) (Store, error, string) {
 	response, err := d.sendGET(fmt.Sprintf("https://api.deliveroo.com/orderapp/v1/restaurants/%s?track=1&lat=%.2f&lng=%.2f&include_unavailable=true&restaurant_fulfillments_supported=true&fulfillment_method=DELIVERY", id, d.latitude, d.longitude))
 	if err != nil {
-		return Store{}, err
+		return Store{}, err, ""
 	}
 
 	defer response.Body.Close()
@@ -267,7 +267,7 @@ func (d *Deliveroo) GetStore(id string) (Store, error) {
 	jsonData := map[string]any{}
 	err = json.Unmarshal(respBytes, &jsonData)
 	if err != nil {
-		return Store{}, err
+		return Store{}, err, string(respBytes)
 	}
 
 	description := "No Description"
@@ -307,13 +307,13 @@ func (d *Deliveroo) GetStore(id string) (Store, error) {
 		ServiceHours: ServiceHours{},
 		Information:  description,
 		Amenity:      amenity,
-	}, nil
+	}, nil, string(respBytes)
 }
 
-func (d *Deliveroo) GetMenuCategories(id string) ([]Category, error) {
+func (d *Deliveroo) GetMenuCategories(id string) ([]Category, error, string) {
 	response, err := d.sendGET(fmt.Sprintf("https://api.deliveroo.com/orderapp/v1/restaurants/%s?track=1&lat=%.2f&lng=%.2f&include_unavailable=true&restaurant_fulfillments_supported=true&fulfillment_method=DELIVERY", id, d.latitude, d.longitude))
 	if err != nil {
-		return nil, err
+		return nil, err, ""
 	}
 
 	defer response.Body.Close()
@@ -322,7 +322,7 @@ func (d *Deliveroo) GetMenuCategories(id string) ([]Category, error) {
 	jsonData := map[string]any{}
 	err = json.Unmarshal(respBytes, &jsonData)
 	if err != nil {
-		return nil, err
+		return nil, err, string(respBytes)
 	}
 
 	categoriesJson := jsonData["menu"].(map[string]any)["menu_categories"].([]any)
@@ -338,13 +338,13 @@ func (d *Deliveroo) GetMenuCategories(id string) ([]Category, error) {
 		})
 	}
 
-	return categories, nil
+	return categories, nil, string(respBytes)
 }
 
-func (d *Deliveroo) GetItems(shopCode string, categoryID string) ([]Item, error) {
+func (d *Deliveroo) GetItems(shopCode string, categoryID string) ([]Item, error, string) {
 	response, err := d.sendGET(fmt.Sprintf("https://api.deliveroo.com/orderapp/v1/restaurants/%s?track=1&lat=%.2f&lng=%.2f&include_unavailable=true&restaurant_fulfillments_supported=true&fulfillment_method=DELIVERY", shopCode, d.latitude, d.longitude))
 	if err != nil {
-		return nil, err
+		return nil, err, ""
 	}
 
 	defer response.Body.Close()
@@ -353,7 +353,7 @@ func (d *Deliveroo) GetItems(shopCode string, categoryID string) ([]Item, error)
 	jsonData := map[string]any{}
 	err = json.Unmarshal(respBytes, &jsonData)
 	if err != nil {
-		return nil, err
+		return nil, err, string(respBytes)
 	}
 
 	menuItems := jsonData["menu"].(map[string]any)["menu_items"].([]any)
@@ -400,13 +400,13 @@ func (d *Deliveroo) GetItems(shopCode string, categoryID string) ([]Item, error)
 		})
 	}
 
-	return items, nil
+	return items, nil, string(respBytes)
 }
 
-func (d *Deliveroo) GetItem(shopCode string, categoryCode string, itemCode string) (Item, error) {
+func (d *Deliveroo) GetItem(shopCode string, categoryCode string, itemCode string) (Item, error, string) {
 	response, err := d.sendGET(fmt.Sprintf("https://api.deliveroo.com/orderapp/v1/restaurants/%s?track=1&lat=%.2f&lng=%.2f&include_unavailable=true&restaurant_fulfillments_supported=true&fulfillment_method=DELIVERY", shopCode, d.latitude, d.longitude))
 	if err != nil {
-		return Item{}, err
+		return Item{}, err, ""
 	}
 
 	defer response.Body.Close()
@@ -415,7 +415,7 @@ func (d *Deliveroo) GetItem(shopCode string, categoryCode string, itemCode strin
 	jsonData := map[string]any{}
 	err = json.Unmarshal(respBytes, &jsonData)
 	if err != nil {
-		return Item{}, err
+		return Item{}, err, string(respBytes)
 	}
 
 	menuItems := jsonData["menu"].(map[string]any)["menu_items"].([]any)
@@ -502,14 +502,14 @@ func (d *Deliveroo) GetItem(shopCode string, categoryCode string, itemCode strin
 		}
 	}
 
-	return item, nil
+	return item, nil, string(respBytes)
 }
 
 // GetItemsWithModifiers returns an array of Item with the selected modifiers
-func (d *Deliveroo) GetItemsWithModifiers(shopCode string, itemCodes []string, modifierGroups [][]ModifierGroup) ([]Item, error) {
+func (d *Deliveroo) GetItemsWithModifiers(shopCode string, itemCodes []string, modifierGroups [][]ModifierGroup) ([]Item, error, string) {
 	response, err := d.sendGET(fmt.Sprintf("https://api.deliveroo.com/orderapp/v1/restaurants/%s?track=1&lat=%.2f&lng=%.2f&include_unavailable=true&restaurant_fulfillments_supported=true&fulfillment_method=DELIVERY", shopCode, d.latitude, d.longitude))
 	if err != nil {
-		return nil, err
+		return nil, err, ""
 	}
 
 	defer response.Body.Close()
@@ -518,7 +518,7 @@ func (d *Deliveroo) GetItemsWithModifiers(shopCode string, itemCodes []string, m
 	jsonData := map[string]any{}
 	err = json.Unmarshal(respBytes, &jsonData)
 	if err != nil {
-		return nil, err
+		return nil, err, string(respBytes)
 	}
 
 	menuItems := jsonData["menu"].(map[string]any)["menu_items"].([]any)
@@ -568,10 +568,10 @@ func (d *Deliveroo) GetItemsWithModifiers(shopCode string, itemCodes []string, m
 		}
 	}
 
-	return items, nil
+	return items, nil, string(respBytes)
 }
 
-func (d *Deliveroo) SendBasket(shopCode string, basket []map[string]any) (string, string, float64, error) {
+func (d *Deliveroo) SendBasket(shopCode string, basket []map[string]any) (string, string, float64, error, string) {
 	payload := map[string]any{
 		"basket": map[string]any{
 			"allergy_note":               "",
@@ -593,12 +593,12 @@ func (d *Deliveroo) SendBasket(shopCode string, basket []map[string]any) (string
 
 	data, err := json.Marshal(payload)
 	if err != nil {
-		return "", "", 0, err
+		return "", "", 0, err, ""
 	}
 
 	response, err := d.sendPOST("https://api.deliveroo.com/orderapp/v1/basket", data, None)
 	if err != nil {
-		return "", "", 0, err
+		return "", "", 0, err, ""
 	}
 
 	defer response.Body.Close()
@@ -607,46 +607,50 @@ func (d *Deliveroo) SendBasket(shopCode string, basket []map[string]any) (string
 	jsonData := map[string]any{}
 	err = json.Unmarshal(respBytes, &jsonData)
 	if err != nil {
-		return "", "", 0, err
+		return "", "", 0, err, string(respBytes)
 	}
 
 	fee, _ := strconv.ParseFloat(jsonData["basket"].(map[string]any)["fee"].(string), 64)
 	surcharge, _ := strconv.ParseFloat(jsonData["basket"].(map[string]any)["surcharge"].(string), 64)
 
-	return jsonData["basket"].(map[string]any)["total"].(string), jsonData["basket"].(map[string]any)["subtotal"].(string), surcharge + fee, nil
+	return jsonData["basket"].(map[string]any)["total"].(string), jsonData["basket"].(map[string]any)["subtotal"].(string), surcharge + fee, nil, string(respBytes)
 }
 
-func (d *Deliveroo) CreatePaymentPlan() (*PaymentMethod, error) {
+func (d *Deliveroo) CreatePaymentPlan() (*PaymentMethod, error, string) {
 	query, err := GetCreatePaymentQuery()
 	if err != nil {
-		return nil, err
+		return nil, err, ""
 	}
 
 	response, err := d.sendPOST("https://api.deliveroo.com/checkout-api/graphql-query", query, CreatePaymentPlan)
 	if err != nil {
-		return nil, err
-	}
-
-	if response.StatusCode != http.StatusOK {
-		return nil, errors.New("failed to create payment plan")
+		return nil, err, ""
 	}
 
 	defer response.Body.Close()
 	respBytes, _ := io.ReadAll(response.Body)
-	fmt.Println(string(respBytes))
+
+	if response.StatusCode != http.StatusOK {
+		return nil, errors.New("failed to create payment plan"), string(respBytes)
+	}
 
 	jsonData := map[string]any{}
 	err = json.Unmarshal(respBytes, &jsonData)
 	if err != nil {
-		return nil, err
+		return nil, err, string(respBytes)
+	}
+
+	creditCard := "In App Credit"
+	if jsonData["data"].(map[string]any)["payment_plan"].(map[string]any)["payment_options"].(map[string]any)["selected_completing"] != nil {
+		creditCard = jsonData["data"].(map[string]any)["payment_plan"].(map[string]any)["payment_options"].(map[string]any)["selected_completing"].(map[string]any)["description"].([]any)[0].(string)
 	}
 
 	return &PaymentMethod{
 		RestaurantName:  jsonData["data"].(map[string]any)["payment_plan"].(map[string]any)["fulfillment_details"].(map[string]any)["restaurant"].(string),
 		ID:              jsonData["data"].(map[string]any)["payment_plan"].(map[string]any)["id"].(string),
 		DeliveryAddress: jsonData["data"].(map[string]any)["payment_plan"].(map[string]any)["delivery_addresses"].(map[string]any)["selected"].(map[string]any)["short_description"].([]any)[0].(string),
-		CreditCard:      jsonData["data"].(map[string]any)["payment_plan"].(map[string]any)["payment_options"].(map[string]any)["selected_completing"].(map[string]any)["description"].([]any)[0].(string),
-	}, nil
+		CreditCard:      creditCard,
+	}, nil, string(respBytes)
 }
 
 func ConvertImage(data io.Reader) []byte {
