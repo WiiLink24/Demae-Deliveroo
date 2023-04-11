@@ -217,18 +217,20 @@ func (d *Deliveroo) GetShops(code CategoryCode) ([]Store, error, string) {
 
 			description := "No Description"
 			if jsonData["description"] != nil {
-				description = wordwrap.WrapString(jsonData["description"].(string), 38)
-				for i3, s := range strings.Split(description, "\n") {
-					switch i3 {
-					case 0:
-						description = s
-						break
-					case 1:
-						description += "\n"
-						description += s
-						break
-					default:
-						break
+				if jsonData["description"].(string) != "" {
+					description = wordwrap.WrapString(jsonData["description"].(string), 38)
+					for i3, s := range strings.Split(description, "\n") {
+						switch i3 {
+						case 0:
+							description = s
+							break
+						case 1:
+							description += "\n"
+							description += s
+							break
+						default:
+							break
+						}
 					}
 				}
 			}
