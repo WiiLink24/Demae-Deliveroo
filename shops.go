@@ -3,6 +3,7 @@ package main
 import (
 	"DemaeDeliveroo/deliveroo"
 	"encoding/xml"
+	"fmt"
 	"net/http"
 )
 
@@ -15,9 +16,9 @@ func shopList(r *Response) {
 		return
 	}
 
-	stores, err := d.GetShops(deliveroo.CategoryCode(categoryCode))
+	stores, err, resp := d.GetShops(deliveroo.CategoryCode(categoryCode))
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
+		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, resp), http.StatusInternalServerError)
 		return
 	}
 
@@ -102,7 +103,11 @@ func shopOne(r *Response) {
 		return
 	}
 
-	shopData, _ := d.GetStore(shopCode)
+	shopData, err, resp := d.GetStore(shopCode)
+	if err != nil {
+		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, resp), http.StatusInternalServerError)
+		return
+	}
 
 	shop := ShopOne{
 		CategoryCode:  CDATA{"01"},
@@ -116,7 +121,7 @@ func shopOne(r *Response) {
 		TimeOrder:     CDATA{"y"},
 		Tel:           CDATA{shopData.Phone},
 		YoyakuMinDate: CDATA{1},
-		YoyakuMaxDate: CDATA{30},
+		YoyakuMaxDate: CDATA{31},
 		PaymentList: KVFieldWChildren{
 			XMLName: xml.Name{Local: "paymentList"},
 			Value: []any{

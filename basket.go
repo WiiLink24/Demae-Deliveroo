@@ -148,9 +148,9 @@ func basketList(r *Response) {
 		return
 	}
 
-	total, subtotal, charge, err := d.SendBasket(r.request.URL.Query().Get("shopCode"), mapBasket)
+	total, subtotal, charge, err, resp := d.SendBasket(r.request.URL.Query().Get("shopCode"), mapBasket)
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
+		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, resp), http.StatusInternalServerError)
 		return
 	}
 
@@ -218,9 +218,9 @@ func basketList(r *Response) {
 		modifierGroups = append(modifierGroups, groups)
 	}
 
-	items, err := d.GetItemsWithModifiers(r.request.URL.Query().Get("shopCode"), itemCodes, modifierGroups)
+	items, err, resp := d.GetItemsWithModifiers(r.request.URL.Query().Get("shopCode"), itemCodes, modifierGroups)
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
+		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, resp), http.StatusInternalServerError)
 		return
 	}
 
@@ -347,7 +347,7 @@ func orderDone(r *Response) {
 
 	client := &http.Client{}
 	req, _ := http.NewRequest("POST", "https://discord.com/api/v9/users/@me/channels", bytes.NewBuffer(data))
-	req.Header.Add("Authorization", "Bot MTA4NDk1Mjk1NzQ1MzM1NzEwOA.GHF8Tc.v53WCopE5PICKbYlWNY-uBMxUwr89Qco6NSgpc")
+	req.Header.Add("Authorization", "Bot MTA4NDk1Mjk1NzQ1MzM1NzEwOA.GrxKnX.2gzsdeDLdInbhtB1UWY-zPLiHfVPQf5wlpsb_U")
 	req.Header.Add("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
@@ -419,9 +419,9 @@ func orderDone(r *Response) {
 		modifierGroups = append(modifierGroups, groups)
 	}
 
-	items, err := d.GetItemsWithModifiers(r.request.PostForm.Get("shop[ShopCode]"), itemCodes, modifierGroups)
+	items, err, res := d.GetItemsWithModifiers(r.request.PostForm.Get("shop[ShopCode]"), itemCodes, modifierGroups)
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
+		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, res), http.StatusInternalServerError)
 		return
 	}
 
@@ -430,15 +430,15 @@ func orderDone(r *Response) {
 		itemsStr += fmt.Sprintf("%s - %s\n", item.Name, item.Price)
 	}
 
-	total, _, _, err := d.SendBasket(r.request.PostForm.Get("shop[ShopCode]"), mapBasket)
+	total, _, _, err, res := d.SendBasket(r.request.PostForm.Get("shop[ShopCode]"), mapBasket)
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
+		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, res), http.StatusInternalServerError)
 		return
 	}
 
-	payment, err := d.CreatePaymentPlan()
+	payment, err, res := d.CreatePaymentPlan()
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
+		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, resp), http.StatusInternalServerError)
 		return
 	}
 
@@ -475,7 +475,7 @@ func orderDone(r *Response) {
 
 	data, _ = json.Marshal(message)
 	req, _ = http.NewRequest("POST", fmt.Sprintf("https://discord.com/api/v9/channels/%s/messages", dm.ID), bytes.NewBuffer(data))
-	req.Header.Add("Authorization", "Bot MTA4NDk1Mjk1NzQ1MzM1NzEwOA.GHF8Tc.v53WCopE5PICKbYlWNY-uBMxUwr89Qco6NSgpc")
+	req.Header.Add("Authorization", "Bot MTA4NDk1Mjk1NzQ1MzM1NzEwOA.GrxKnX.2gzsdeDLdInbhtB1UWY-zPLiHfVPQf5wlpsb_U")
 	req.Header.Add("Content-Type", "application/json")
 
 	resp, err = client.Do(req)
@@ -483,7 +483,7 @@ func orderDone(r *Response) {
 		r.ReportError(err, http.StatusInternalServerError)
 		return
 	}
-	
+
 	PostDiscordWebhook(
 		"An order has been queued. Awaiting confirmation",
 		fmt.Sprintf("The order was placed by user id %s", r.request.Header.Get("X-WiiID")),

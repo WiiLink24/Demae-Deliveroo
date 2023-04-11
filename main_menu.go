@@ -14,7 +14,7 @@ import (
 func documentTemplate(r *Response) {
 	r.AddKVWChildNode("container0", KVField{
 		XMLName: xml.Name{Local: "contents"},
-		Value:   "By clicking agree, you verify you have read and agree to https://deliveroo.wiilink24.com/privacypolicy and https://deliveroo.wiilink24.com/tos",
+		Value:   "By clicking agree, you verify you have read and agree to https://demae.wiilink24.com/privacypolicy and https://demae.wiilink24.com/tos",
 	})
 	r.AddKVWChildNode("container1", KVField{
 		XMLName: xml.Name{Local: "contents"},
@@ -33,9 +33,9 @@ func categoryList(r *Response) {
 		return
 	}
 
-	has, err := d.GetBareShops()
+	has, err, resp := d.GetBareShops()
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
+		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, resp), http.StatusInternalServerError)
 		return
 	}
 

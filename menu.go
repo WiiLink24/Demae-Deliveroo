@@ -16,9 +16,9 @@ func menuList(r *Response) {
 		return
 	}
 
-	menuData, err := d.GetMenuCategories(r.request.URL.Query().Get("shopCode"))
+	menuData, err, resp := d.GetMenuCategories(r.request.URL.Query().Get("shopCode"))
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
+		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, resp), http.StatusInternalServerError)
 		return
 	}
 
@@ -73,9 +73,9 @@ func itemList(r *Response) {
 		return
 	}
 
-	itemData, err := d.GetItems(r.request.URL.Query().Get("shopCode"), r.request.URL.Query().Get("menuCode"))
+	itemData, err, resp := d.GetItems(r.request.URL.Query().Get("shopCode"), r.request.URL.Query().Get("menuCode"))
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
+		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, resp), http.StatusInternalServerError)
 		return
 	}
 
@@ -161,9 +161,9 @@ func itemOne(r *Response) {
 		return
 	}
 
-	item, err := d.GetItem(r.request.URL.Query().Get("shopCode"), r.request.URL.Query().Get("menuCode"), r.request.URL.Query().Get("itemCode"))
+	item, err, resp := d.GetItem(r.request.URL.Query().Get("shopCode"), r.request.URL.Query().Get("menuCode"), r.request.URL.Query().Get("itemCode"))
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
+		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, resp), http.StatusInternalServerError)
 		return
 	}
 
