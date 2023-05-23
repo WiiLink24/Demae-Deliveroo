@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"github.com/getsentry/sentry-go"
+	"github.com/google/uuid"
 	"github.com/logrusorgru/aurora/v4"
 	"log"
 	"net/http"
@@ -218,13 +219,30 @@ func PostDiscordWebhook(title, message, url string, color int) {
 // ReportError helps make errors nicer. First it logs the error to Sentry,
 // then writes a response for the server to send.
 func (r *Response) ReportError(err error, code int) {
-	sentry.CaptureException(err)
 	log.Printf("An error has occurred: %s", aurora.Red(err.Error()))
 
 	var discordId string
 	row := pool.QueryRow(context.Background(), QueryDiscordID, r.request.Header.Get("X-WiiID"))
 	_err := row.Scan(&discordId)
-	sentry.CaptureException(_err)
+
+	if _err != nil {
+		// We assume Discord ID doesn't exist because we will get an error elsewhere if the db is down.
+		// UUID's are generated for each error case, so we have a unique identifier
+		discordId = fmt.Sprintf("Not Registered: %s", uuid.New().String())
+	}
+
+	sentry.WithScope(func(s *sentry.Scope) {
+		s.SetTag("Discord ID", discordId)
+		if r.roo.Response() != "" {
+			s.SetExtra("Response", r.roo.Response())
+		}
+
+		sentry.CaptureException(err)
+	})
+
+	if code == http.StatusOK {
+		code = http.StatusInternalServerError
+	}
 
 	errorString := fmt.Sprintf("%s\nWii ID: %s\nDiscord ID: %s", err.Error(), r.wiiID, discordId)
 	PostDiscordWebhook("An error has occurred in Demae Deliveroo!", errorString, config.ErrorWebhook, 16711711)

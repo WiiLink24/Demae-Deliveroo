@@ -3,22 +3,21 @@ package main
 import (
 	"DemaeDeliveroo/deliveroo"
 	"encoding/xml"
-	"fmt"
-	"net/http"
 )
 
 func shopList(r *Response) {
 	categoryCode := r.request.URL.Query().Get("categoryCode")
 
-	d, err := deliveroo.NewDeliveroo(pool, r.request)
+	var err error
+	r.roo, err = deliveroo.NewDeliveroo(pool, r.request)
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
+		r.ReportError(err, r.roo.ResponseCode())
 		return
 	}
 
-	stores, err, resp := d.GetShops(deliveroo.CategoryCode(categoryCode))
+	stores, err := r.roo.GetShops(deliveroo.CategoryCode(categoryCode))
 	if err != nil {
-		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, resp), http.StatusInternalServerError)
+		r.ReportError(err, r.roo.ResponseCode())
 		return
 	}
 
@@ -97,15 +96,16 @@ func shopList(r *Response) {
 func shopOne(r *Response) {
 	shopCode := r.request.URL.Query().Get("shopCode")
 
-	d, err := deliveroo.NewDeliveroo(pool, r.request)
+	var err error
+	r.roo, err = deliveroo.NewDeliveroo(pool, r.request)
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
+		r.ReportError(err, r.roo.ResponseCode())
 		return
 	}
 
-	shopData, err, resp := d.GetStore(shopCode)
+	shopData, err := r.roo.GetStore(shopCode)
 	if err != nil {
-		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, resp), http.StatusInternalServerError)
+		r.ReportError(err, r.roo.ResponseCode())
 		return
 	}
 

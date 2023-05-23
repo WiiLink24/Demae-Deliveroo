@@ -27,15 +27,16 @@ func documentTemplate(r *Response) {
 }
 
 func categoryList(r *Response) {
-	d, err := deliveroo.NewDeliveroo(pool, r.request)
+	var err error
+	r.roo, err = deliveroo.NewDeliveroo(pool, r.request)
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
+		r.ReportError(err, r.roo.ResponseCode())
 		return
 	}
 
-	has, err, resp := d.GetBareShops()
+	has, err := r.roo.GetBareShops()
 	if err != nil {
-		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, resp), http.StatusInternalServerError)
+		r.ReportError(err, r.roo.ResponseCode())
 		return
 	}
 
@@ -157,5 +158,13 @@ func inquiryDone(r *Response) {
 		shiftJisDecoder(r.request.PostForm.Get("message")),
 	)
 
+	var err error
+	r.roo, err = deliveroo.NewDeliveroo(pool, r.request)
+	if err != nil {
+		r.ReportError(err, r.roo.ResponseCode())
+		return
+	}
+
+	r.roo.SetResponse(shiftJisDecoder(r.request.PostForm.Get("message")))
 	r.ReportError(fmt.Errorf(errorString), http.StatusInternalServerError)
 }

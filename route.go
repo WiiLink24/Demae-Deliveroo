@@ -6,6 +6,7 @@ import (
 	"github.com/getsentry/sentry-go"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 )
 
@@ -120,6 +121,17 @@ func (r *Route) Handle() http.Handler {
 		}
 
 		resp := NewResponse(req, &w, action.XMLType)
+		// Error recovery
+		defer func() {
+			if err := recover(); err != nil {
+				buf := make([]byte, 2048)
+				n := runtime.Stack(buf, false)
+				buf = buf[:n]
+
+				fmt.Printf("Recovering from error %v\n %s\n", err, buf)
+				resp.ReportError(fmt.Errorf("panic has occurred. Refer to the stack trace for more details"), http.StatusInternalServerError)
+			}
+		}()
 		action.Callback(resp)
 
 		if resp.hasError {

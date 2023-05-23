@@ -1,6 +1,7 @@
 package main
 
 import (
+	"DemaeDeliveroo/deliveroo"
 	"context"
 	"encoding/xml"
 	"math/rand"
@@ -103,13 +104,21 @@ func areaList(r *Response) {
 		return
 	}
 
-	newAreaCode := GenerateAreaCode()
-	_, err := pool.Exec(context.Background(), InsertUser, newAreaCode, r.request.Header.Get("X-WiiID"))
+	var err error
+	r.roo, err = deliveroo.NewDeliveroo(pool, r.request)
 	if err != nil {
+		r.ReportError(err, r.roo.ResponseCode())
+		return
+	}
+
+	newAreaCode := GenerateAreaCode()
+	_, err = pool.Exec(context.Background(), InsertUser, newAreaCode, r.request.Header.Get("X-WiiID"))
+	if err != nil {
+		r.roo.SetResponse("Failed to insert user.")
 		r.ReportError(err, http.StatusInternalServerError)
 		return
 	}
-	
+
 	r.AddKVWChildNode("areaList", KVFieldWChildren{
 		XMLName: xml.Name{Local: "place"},
 		Value: []any{

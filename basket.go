@@ -22,9 +22,17 @@ const QueryUser = `SELECT "user".basket, "user".auth_key, "user".discord_id FROM
 const ClearBasket = `UPDATE "user" SET order_id = $1, price = $2, basket = $3 WHERE wii_id = $4`
 
 func authKey(r *Response) {
+	var err error
+	r.roo, err = deliveroo.NewDeliveroo(pool, r.request)
+	if err != nil {
+		r.ReportError(err, r.roo.ResponseCode())
+		return
+	}
+
 	authKeyValue, err := uuid.DefaultGenerator.NewV1()
 	if err != nil {
-		r.ReportError(err, http.StatusUnauthorized)
+		r.roo.SetResponse("Failed to generate UUID")
+		r.ReportError(err, http.StatusInternalServerError)
 		return
 	}
 
@@ -33,6 +41,7 @@ func authKey(r *Response) {
 	row := pool.QueryRow(context.Background(), QueryUserBasket, r.request.Header.Get("X-WiiID"))
 	err = row.Scan(nil, &_authKey)
 	if err != nil {
+		r.roo.SetResponse("Failed to scan for auth key")
 		r.ReportError(err, http.StatusInternalServerError)
 		return
 	}
@@ -40,6 +49,7 @@ func authKey(r *Response) {
 	if _authKey != "" {
 		_, err = pool.Exec(context.Background(), ClearBasket, "", "", "[]", r.request.Header.Get("X-WiiID"))
 		if err != nil {
+			r.roo.SetResponse("Failed to clear basket")
 			r.ReportError(err, http.StatusInternalServerError)
 			return
 		}
@@ -47,6 +57,7 @@ func authKey(r *Response) {
 
 	_, err = pool.Exec(context.Background(), InsertAuthkey, authKeyValue.String(), r.request.Header.Get("X-WiiID"))
 	if err != nil {
+		r.roo.SetResponse("Failed to write auth key")
 		r.ReportError(err, http.StatusInternalServerError)
 		return
 	}
@@ -60,6 +71,13 @@ func authKey(r *Response) {
 }
 
 func basketAdd(r *Response) {
+	var err error
+	r.roo, err = deliveroo.NewDeliveroo(pool, r.request)
+	if err != nil {
+		r.ReportError(err, r.roo.ResponseCode())
+		return
+	}
+
 	itemCode := r.request.PostForm.Get("itemCode")
 	quantity := r.request.PostForm.Get("quantity")
 
@@ -76,8 +94,9 @@ func basketAdd(r *Response) {
 
 	var lastBasket string
 	row := pool.QueryRow(context.Background(), QueryUserBasket, r.request.Header.Get("X-WiiID"))
-	err := row.Scan(&lastBasket, nil)
+	err = row.Scan(&lastBasket, nil)
 	if err != nil {
+		r.roo.SetResponse("Failed to query basket")
 		r.ReportError(err, http.StatusInternalServerError)
 		return
 	}
@@ -85,6 +104,7 @@ func basketAdd(r *Response) {
 	var actualBasket []map[string]any
 	err = json.Unmarshal([]byte(lastBasket), &actualBasket)
 	if err != nil {
+		r.roo.SetResponse("Failed to decode basket")
 		r.ReportError(err, http.StatusInternalServerError)
 		return
 	}
@@ -92,6 +112,7 @@ func basketAdd(r *Response) {
 	// This is literal insanity but go with it
 	data, err := json.Marshal(basket)
 	if err != nil {
+		r.roo.SetResponse("Failed to encode basket")
 		r.ReportError(err, http.StatusInternalServerError)
 		return
 	}
@@ -99,6 +120,7 @@ func basketAdd(r *Response) {
 	var newBasket map[string]any
 	err = json.Unmarshal(data, &newBasket)
 	if err != nil {
+		r.roo.SetResponse("Failed to decode basket")
 		r.ReportError(err, http.StatusInternalServerError)
 		return
 	}
@@ -108,22 +130,32 @@ func basketAdd(r *Response) {
 	// Convert basket to JSON then insert to database
 	jsonStr, err := json.Marshal(actualBasket)
 	if err != nil {
+		r.roo.SetResponse("Failed to encode basket")
 		r.ReportError(err, http.StatusInternalServerError)
 		return
 	}
 
 	_, err = pool.Exec(context.Background(), `UPDATE "user" SET basket = $1 WHERE wii_id = $2`, jsonStr, r.request.Header.Get("X-WiiID"))
 	if err != nil {
+		r.roo.SetResponse("Failed to insert basket")
 		r.ReportError(err, http.StatusInternalServerError)
 		return
 	}
 }
 
 func basketList(r *Response) {
+	var err error
+	r.roo, err = deliveroo.NewDeliveroo(pool, r.request)
+	if err != nil {
+		r.ReportError(err, r.roo.ResponseCode())
+		return
+	}
+
 	var basketStr string
 	row := pool.QueryRow(context.Background(), QueryUserBasket, r.request.Header.Get("X-WiiID"))
-	err := row.Scan(&basketStr, nil)
+	err = row.Scan(&basketStr, nil)
 	if err != nil {
+		r.roo.SetResponse("Failed to query basket")
 		r.ReportError(err, http.StatusInternalServerError)
 		return
 	}
@@ -131,6 +163,7 @@ func basketList(r *Response) {
 	var basket []BasketJSON
 	err = json.Unmarshal([]byte(basketStr), &basket)
 	if err != nil {
+		r.roo.SetResponse("Failed to decode basket")
 		r.ReportError(err, http.StatusInternalServerError)
 		return
 	}
@@ -138,19 +171,14 @@ func basketList(r *Response) {
 	var mapBasket []map[string]any
 	err = json.Unmarshal([]byte(basketStr), &mapBasket)
 	if err != nil {
+		r.roo.SetResponse("Failed to decode basket")
 		r.ReportError(err, http.StatusInternalServerError)
 		return
 	}
 
-	d, err := deliveroo.NewDeliveroo(pool, r.request)
+	total, subtotal, charge, err := r.roo.SendBasket(r.request.URL.Query().Get("shopCode"), mapBasket)
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
-		return
-	}
-
-	total, subtotal, charge, err, resp := d.SendBasket(r.request.URL.Query().Get("shopCode"), mapBasket)
-	if err != nil {
-		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, resp), http.StatusInternalServerError)
+		r.ReportError(err, r.roo.ResponseCode())
 		return
 	}
 
@@ -218,9 +246,9 @@ func basketList(r *Response) {
 		modifierGroups = append(modifierGroups, groups)
 	}
 
-	items, err, resp := d.GetItemsWithModifiers(r.request.URL.Query().Get("shopCode"), itemCodes, modifierGroups)
+	items, err := r.roo.GetItemsWithModifiers(r.request.URL.Query().Get("shopCode"), itemCodes, modifierGroups)
 	if err != nil {
-		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, resp), http.StatusInternalServerError)
+		r.ReportError(err, r.roo.ResponseCode())
 		return
 	}
 
@@ -327,13 +355,20 @@ func basketList(r *Response) {
 }
 
 func orderDone(r *Response) {
+	var err error
+	r.roo, err = deliveroo.NewDeliveroo(pool, r.request)
+	if err != nil {
+		r.ReportError(err, r.roo.ResponseCode())
+		return
+	}
+
 	// We don't handle the actual order here, we dispatch a verification message to the current user.
 	// The Discord bot then places the order if all is right.
 	var basketStr string
 	var _authKey string
 	var discordID string
 	row := pool.QueryRow(context.Background(), QueryUser, r.request.Header.Get("X-WiiID"))
-	err := row.Scan(&basketStr, &_authKey, &discordID)
+	err = row.Scan(&basketStr, &_authKey, &discordID)
 	if err != nil {
 		r.ReportError(err, http.StatusInternalServerError)
 		return
@@ -347,12 +382,13 @@ func orderDone(r *Response) {
 
 	client := &http.Client{}
 	req, _ := http.NewRequest("POST", "https://discord.com/api/v9/users/@me/channels", bytes.NewBuffer(data))
-	req.Header.Add("Authorization", "Bot MTA4NDk1Mjk1NzQ1MzM1NzEwOA.GrxKnX.2gzsdeDLdInbhtB1UWY-zPLiHfVPQf5wlpsb_U")
+	req.Header.Add("Authorization", config.DiscordToken)
 	req.Header.Add("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
+		r.roo.SetResponse("Failed to contact Discord")
+		r.ReportError(err, resp.StatusCode)
 		return
 	}
 
@@ -363,27 +399,22 @@ func orderDone(r *Response) {
 
 	err = json.Unmarshal(respBytes, &dm)
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
-		return
-	}
-
-	d, err := deliveroo.NewDeliveroo(pool, r.request)
-	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
+		r.roo.SetResponse(string(respBytes))
+		r.ReportError(err, resp.StatusCode)
 		return
 	}
 
 	var basket []BasketJSON
 	err = json.Unmarshal([]byte(basketStr), &basket)
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
+		r.ReportError(err, r.roo.ResponseCode())
 		return
 	}
 
 	var mapBasket []map[string]any
 	err = json.Unmarshal([]byte(basketStr), &mapBasket)
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
+		r.ReportError(err, r.roo.ResponseCode())
 		return
 	}
 
@@ -419,9 +450,9 @@ func orderDone(r *Response) {
 		modifierGroups = append(modifierGroups, groups)
 	}
 
-	items, err, res := d.GetItemsWithModifiers(r.request.PostForm.Get("shop[ShopCode]"), itemCodes, modifierGroups)
+	items, err := r.roo.GetItemsWithModifiers(r.request.PostForm.Get("shop[ShopCode]"), itemCodes, modifierGroups)
 	if err != nil {
-		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, res), http.StatusInternalServerError)
+		r.ReportError(err, r.roo.ResponseCode())
 		return
 	}
 
@@ -430,15 +461,15 @@ func orderDone(r *Response) {
 		itemsStr += fmt.Sprintf("%s - %s\n", item.Name, item.Price)
 	}
 
-	total, _, _, err, res := d.SendBasket(r.request.PostForm.Get("shop[ShopCode]"), mapBasket)
+	total, _, _, err := r.roo.SendBasket(r.request.PostForm.Get("shop[ShopCode]"), mapBasket)
 	if err != nil {
-		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, res), http.StatusInternalServerError)
+		r.ReportError(err, r.roo.ResponseCode())
 		return
 	}
 
-	payment, err, res := d.CreatePaymentPlan()
+	payment, err := r.roo.CreatePaymentPlan()
 	if err != nil {
-		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, resp), http.StatusInternalServerError)
+		r.ReportError(err, r.roo.ResponseCode())
 		return
 	}
 
@@ -475,12 +506,13 @@ func orderDone(r *Response) {
 
 	data, _ = json.Marshal(message)
 	req, _ = http.NewRequest("POST", fmt.Sprintf("https://discord.com/api/v9/channels/%s/messages", dm.ID), bytes.NewBuffer(data))
-	req.Header.Add("Authorization", "Bot MTA4NDk1Mjk1NzQ1MzM1NzEwOA.GrxKnX.2gzsdeDLdInbhtB1UWY-zPLiHfVPQf5wlpsb_U")
+	req.Header.Add("Authorization", config.DiscordToken)
 	req.Header.Add("Content-Type", "application/json")
 
 	resp, err = client.Do(req)
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
+		r.roo.SetResponse("Failed to contact Discord")
+		r.ReportError(err, resp.StatusCode)
 		return
 	}
 

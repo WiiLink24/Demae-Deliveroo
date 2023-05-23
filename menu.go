@@ -5,20 +5,20 @@ import (
 	"encoding/xml"
 	"fmt"
 	"github.com/mitchellh/go-wordwrap"
-	"net/http"
 	"strings"
 )
 
 func menuList(r *Response) {
-	d, err := deliveroo.NewDeliveroo(pool, r.request)
+	var err error
+	r.roo, err = deliveroo.NewDeliveroo(pool, r.request)
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
+		r.ReportError(err, r.roo.ResponseCode())
 		return
 	}
 
-	menuData, err, resp := d.GetMenuCategories(r.request.URL.Query().Get("shopCode"))
+	menuData, err := r.roo.GetMenuCategories(r.request.URL.Query().Get("shopCode"))
 	if err != nil {
-		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, resp), http.StatusInternalServerError)
+		r.ReportError(err, r.roo.ResponseCode())
 		return
 	}
 
@@ -67,15 +67,16 @@ func menuList(r *Response) {
 
 func itemList(r *Response) {
 	var items []NestedItem
-	d, err := deliveroo.NewDeliveroo(pool, r.request)
+	var err error
+	r.roo, err = deliveroo.NewDeliveroo(pool, r.request)
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
+		r.ReportError(err, r.roo.ResponseCode())
 		return
 	}
 
-	itemData, err, resp := d.GetItems(r.request.URL.Query().Get("shopCode"), r.request.URL.Query().Get("menuCode"))
+	itemData, err := r.roo.GetItems(r.request.URL.Query().Get("shopCode"), r.request.URL.Query().Get("menuCode"))
 	if err != nil {
-		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, resp), http.StatusInternalServerError)
+		r.ReportError(err, r.roo.ResponseCode())
 		return
 	}
 
@@ -155,15 +156,16 @@ func itemList(r *Response) {
 }
 
 func itemOne(r *Response) {
-	d, err := deliveroo.NewDeliveroo(pool, r.request)
+	var err error
+	r.roo, err = deliveroo.NewDeliveroo(pool, r.request)
 	if err != nil {
-		r.ReportError(err, http.StatusInternalServerError)
+		r.ReportError(err, r.roo.ResponseCode())
 		return
 	}
 
-	item, err, resp := d.GetItem(r.request.URL.Query().Get("shopCode"), r.request.URL.Query().Get("menuCode"), r.request.URL.Query().Get("itemCode"))
+	item, err := r.roo.GetItem(r.request.URL.Query().Get("shopCode"), r.request.URL.Query().Get("menuCode"), r.request.URL.Query().Get("itemCode"))
 	if err != nil {
-		r.ReportError(fmt.Errorf("%v\nResponse: %s", err, resp), http.StatusInternalServerError)
+		r.ReportError(err, r.roo.ResponseCode())
 		return
 	}
 

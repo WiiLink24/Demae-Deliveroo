@@ -1,6 +1,7 @@
 package main
 
 import (
+	"DemaeDeliveroo/deliveroo"
 	"encoding/xml"
 	"net/http"
 )
@@ -22,6 +23,7 @@ type Config struct {
 	ErrorWebhook string   `xml:"ErrorWebhook"`
 	OrderWebhook string   `xml:"OrderWebhook"`
 	SentryDSN    string   `xml:"SentryDSN"`
+	DiscordToken string   `xml:"DiscordToken"`
 }
 
 // Response describes the inner response format, along with common fields across requests.
@@ -32,6 +34,8 @@ type Response struct {
 	request             *http.Request
 	writer              *http.ResponseWriter
 	isMultipleRootNodes bool
+	// Used for reporting errors if a panic occurs
+	roo *deliveroo.Deliveroo
 }
 
 // KVField represents an individual node in form of <XMLName>Contents</XMLName>.
