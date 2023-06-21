@@ -639,10 +639,9 @@ func (d *Deliveroo) SendBasket(shopCode string, basket []map[string]any) (string
 		return "", "", 0, err
 	}
 
-	fee, _ := strconv.ParseFloat(jsonData["basket"].(map[string]any)["fee"].(string), 64)
 	surcharge, _ := strconv.ParseFloat(jsonData["basket"].(map[string]any)["surcharge"].(string), 64)
 
-	return jsonData["basket"].(map[string]any)["total"].(string), jsonData["basket"].(map[string]any)["subtotal"].(string), surcharge + fee, nil
+	return jsonData["basket"].(map[string]any)["total"].(string), jsonData["basket"].(map[string]any)["subtotal"].(string), surcharge, nil
 }
 
 func (d *Deliveroo) CreatePaymentPlan() (*PaymentMethod, error) {
