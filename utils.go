@@ -142,7 +142,7 @@ func GenerateVersionAndAPIStatus() (*KVField, *KVFieldWChildren) {
 		Value: []any{
 			KVField{
 				XMLName: xml.Name{Local: "code"},
-				Value:   "0",
+				Value:   "97",
 			},
 		},
 	}
